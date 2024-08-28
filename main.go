@@ -39,7 +39,7 @@ func main() {
 	processFile(os.Args[1])
 }
 
-func processFile(filePath string) {
+func readFile(filePath string, batches chan<- []string) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalf("Could not open input file: %v", err)
@@ -58,40 +58,56 @@ func processFile(filePath string) {
 
 	reader := bytes.NewReader(data)
 	scanner := bufio.NewScanner(reader)
+	batch := make([]string, 0, 1000)
+	for scanner.Scan() {
+		line := scanner.Text()
+		batch = append(batch, line)
+		if len(batch) == 1000 {
+			batches <- batch
+			batch = make([]string, 0, 1000)
+		}
+	}
+	close(batches)
+}
+
+func processFile(filePath string) {
+	batches := make(chan []string, 1000)
+	go readFile(filePath, batches)
 
 	agg := make(map[string]*MeasurementAgg, 500)
-	for scanner.Scan() {
-		text := scanner.Text()
-		split := strings.Split(text, ";")
-		if len(split) != 2 {
-			log.Fatalf("Invalid line: %s", text)
-		}
+	for batch := range batches {
+		for _, line := range batch {
+			split := strings.Split(line, ";")
+			if len(split) != 2 {
+				log.Fatalf("Invalid line: %s", line)
+			}
 
-		name := split[0]
-		value, err := strconv.ParseFloat(split[1], 64)
-		if err != nil {
-			log.Fatalf("Could not parse value: %v", err)
-		}
+			name := split[0]
+			value, err := strconv.ParseFloat(split[1], 64)
+			if err != nil {
+				log.Fatalf("Could not parse value: %v", err)
+			}
 
-		stationAgg, ok := agg[name]
-		if ok {
-			stationAgg.Min = min(stationAgg.Min, value)
-			stationAgg.Max = max(stationAgg.Max, value)
-			stationAgg.Sum = stationAgg.Sum + value
-			stationAgg.Count = stationAgg.Count + 1
-		} else {
-			agg[name] = &MeasurementAgg{
-				Min:   value,
-				Max:   value,
-				Sum:   value,
-				Count: 1,
+			stationAgg, ok := agg[name]
+			if ok {
+				stationAgg.Min = min(stationAgg.Min, value)
+				stationAgg.Max = max(stationAgg.Max, value)
+				stationAgg.Sum = stationAgg.Sum + value
+				stationAgg.Count = stationAgg.Count + 1
+			} else {
+				agg[name] = &MeasurementAgg{
+					Min:   value,
+					Max:   value,
+					Sum:   value,
+					Count: 1,
+				}
 			}
 		}
+
 	}
 
 	for _, station := range slices.Sorted(maps.Keys(agg)) {
 		stationAgg := agg[station]
 		fmt.Println(station, stationAgg.Min, math.Round((stationAgg.Sum/float64(stationAgg.Count))*10.0)/10.0, stationAgg.Max)
 	}
-
 }
