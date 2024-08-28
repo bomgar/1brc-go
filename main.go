@@ -8,9 +8,11 @@ import (
 	"maps"
 	"math"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/bomgar/1brc-go/fastfloat"
@@ -44,7 +46,7 @@ func main() {
 	processFile(os.Args[1])
 }
 
-func readFile(filePath string, batches chan<- []string) {
+func readFile(filePath string, batches chan<- []Measurement) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalf("Could not open input file: %v", err)
@@ -61,18 +63,64 @@ func readFile(filePath string, batches chan<- []string) {
 	}
 	defer syscall.Munmap(data)
 
-	reader := bytes.NewReader(data)
-	scanner := bufio.NewScanner(reader)
-	batch := make([]string, 0, 1000)
-	for scanner.Scan() {
-		line := scanner.Text()
-		batch = append(batch, line)
-		if len(batch) == 1000 {
-			batches <- batch
-			batch = make([]string, 0, 1000)
+	nChunks := runtime.NumCPU()
+
+	chunkSize := len(data) / nChunks
+	if chunkSize == 0 {
+		chunkSize = len(data)
+	}
+
+	chunks := make([]int, 0, nChunks)
+	offset := 0
+	for offset < len(data) {
+		offset += chunkSize
+		if offset >= len(data) {
+			chunks = append(chunks, len(data))
+			break
+		}
+
+		nlPos := bytes.IndexByte(data[offset:], '\n')
+		if nlPos == -1 {
+			chunks = append(chunks, len(data))
+			break
+		} else {
+			offset += nlPos + 1
+			chunks = append(chunks, offset)
 		}
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(chunks))
+
+	start := 0
+	for _, chunk := range chunks {
+		go func(data []byte) {
+			processChunk(data, batches)
+			wg.Done()
+		}(data[start:chunk])
+		start = chunk
+	}
+	wg.Wait()
+    fmt.Println("Done with batches")
 	close(batches)
+}
+
+func processChunk(data []byte, batches chan<- []Measurement) {
+	reader := bytes.NewReader(data)
+	scanner := bufio.NewScanner(reader)
+	batch := make([]Measurement, 0, 1000)
+	for scanner.Scan() {
+		line := scanner.Text()
+        measurement:= parseLine(line)
+		batch = append(batch, measurement)
+		if len(batch) == 1000 {
+			batches <- batch
+			batch = make([]Measurement, 0, 1000)
+		}
+	}
+	if len(batch) > 0 {
+		batches <- batch
+	}
 }
 
 func splitLine(line string) (string, string) {
@@ -83,33 +131,18 @@ func splitLine(line string) (string, string) {
 	return line[:commaIndex], line[commaIndex+1:]
 }
 
-func parseLines(lineBatches <-chan []string, measurementBatches chan<- []Measurement) {
-
-	for linesBatch := range lineBatches {
-
-		measurementBatch := make([]Measurement, 0, len(linesBatch))
-		for _, line := range linesBatch {
-
-			name, valueString := splitLine(line)
-			value := fastfloat.ParseBestEffort(valueString)
-			measurement := Measurement{
-				Station: name,
-				Value:   value,
-			}
-
-			measurementBatch = append(measurementBatch, measurement)
-		}
-		measurementBatches <- measurementBatch
+func parseLine(line string) Measurement {
+	name, valueString := splitLine(line)
+	value := fastfloat.ParseBestEffort(valueString)
+	return Measurement{
+		Station: name,
+		Value:   value,
 	}
-	close(measurementBatches)
 }
 
 func processFile(filePath string) {
-	lineBatches := make(chan []string, 50)
-	go readFile(filePath, lineBatches)
-
 	measurementBatches := make(chan []Measurement, 50)
-	go parseLines(lineBatches, measurementBatches)
+	go readFile(filePath, measurementBatches)
 
 	agg := make(map[string]*MeasurementAgg, 500)
 	for batch := range measurementBatches {
@@ -140,4 +173,3 @@ func processFile(filePath string) {
 		fmt.Println(station, stationAgg.Min, math.Round((stationAgg.Sum/float64(stationAgg.Count))*10.0)/10.0, stationAgg.Max)
 	}
 }
-
