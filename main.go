@@ -15,6 +15,10 @@ import (
 	"syscall"
 )
 
+type Measurement struct {
+	Station string
+	Value   float64
+}
 type MeasurementAgg struct {
 	Min   float64
 	Max   float64
@@ -70,32 +74,59 @@ func readFile(filePath string, batches chan<- []string) {
 	close(batches)
 }
 
-func processFile(filePath string) {
-	batches := make(chan []string, 1000)
-	go readFile(filePath, batches)
+func splitLine(line string) (string, string) {
+	commaIndex := strings.Index(line, ";")
+	if commaIndex == -1 {
+		log.Fatalf("Invalid line: %s", line)
+	}
+	return line[:commaIndex], line[commaIndex+1:]
+}
 
-	agg := make(map[string]*MeasurementAgg, 500)
-	for batch := range batches {
-		for _, line := range batch {
-			split := strings.Split(line, ";")
-			if len(split) != 2 {
-				log.Fatalf("Invalid line: %s", line)
-			}
+func parseLines(lineBatches <-chan []string, measurementBatches chan<- []Measurement) {
 
-			name := split[0]
-			value, err := strconv.ParseFloat(split[1], 64)
+	for linesBatch := range lineBatches {
+
+		measurementBatch := make([]Measurement, 0, len(linesBatch))
+		for _, line := range linesBatch {
+
+			name, valueString := splitLine(line)
+			value, err := strconv.ParseFloat(valueString, 64)
 			if err != nil {
 				log.Fatalf("Could not parse value: %v", err)
 			}
+			measurement := Measurement{
+				Station: name,
+				Value:   value,
+			}
 
-			stationAgg, ok := agg[name]
+			measurementBatch = append(measurementBatch, measurement)
+		}
+		measurementBatches <- measurementBatch
+	}
+	close(measurementBatches)
+}
+
+func processFile(filePath string) {
+	lineBatches := make(chan []string, 50)
+	go readFile(filePath, lineBatches)
+
+	measurementBatches := make(chan []Measurement, 50)
+	go parseLines(lineBatches, measurementBatches)
+
+	agg := make(map[string]*MeasurementAgg, 500)
+	for batch := range measurementBatches {
+		for _, measurement := range batch {
+			station := measurement.Station
+			value := measurement.Value
+
+			stationAgg, ok := agg[station]
 			if ok {
 				stationAgg.Min = min(stationAgg.Min, value)
 				stationAgg.Max = max(stationAgg.Max, value)
 				stationAgg.Sum = stationAgg.Sum + value
 				stationAgg.Count = stationAgg.Count + 1
 			} else {
-				agg[name] = &MeasurementAgg{
+				agg[station] = &MeasurementAgg{
 					Min:   value,
 					Max:   value,
 					Sum:   value,
