@@ -101,7 +101,6 @@ func readFile(filePath string, batches chan<- []Measurement) {
 		start = chunk
 	}
 	wg.Wait()
-    fmt.Println("Done with batches")
 	close(batches)
 }
 
