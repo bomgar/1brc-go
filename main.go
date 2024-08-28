@@ -10,9 +10,10 @@ import (
 	"os"
 	"runtime/pprof"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/bomgar/1brc-go/fastfloat"
 )
 
 type Measurement struct {
@@ -90,10 +91,7 @@ func parseLines(lineBatches <-chan []string, measurementBatches chan<- []Measure
 		for _, line := range linesBatch {
 
 			name, valueString := splitLine(line)
-			value, err := strconv.ParseFloat(valueString, 64)
-			if err != nil {
-				log.Fatalf("Could not parse value: %v", err)
-			}
+			value := fastfloat.ParseBestEffort(valueString)
 			measurement := Measurement{
 				Station: name,
 				Value:   value,
@@ -142,3 +140,4 @@ func processFile(filePath string) {
 		fmt.Println(station, stationAgg.Min, math.Round((stationAgg.Sum/float64(stationAgg.Count))*10.0)/10.0, stationAgg.Max)
 	}
 }
+
