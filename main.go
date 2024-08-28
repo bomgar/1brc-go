@@ -8,6 +8,7 @@ import (
 	"maps"
 	"math"
 	"os"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,26 +23,43 @@ type MeasurementAgg struct {
 }
 
 func main() {
-	file, err := os.Open(os.Args[1])
+	// 1. Create a file to write the profile to
+	f, err := os.Create("cpu.prof")
+	if err != nil {
+		log.Fatal("could not create CPU profile: ", err)
+	}
+	defer f.Close()
+
+	// 2. Start CPU profiling
+	if err := pprof.StartCPUProfile(f); err != nil {
+		log.Fatal("could not start CPU profile: ", err)
+	}
+	defer pprof.StopCPUProfile()
+
+	processFile(os.Args[1])
+}
+
+func processFile(filePath string) {
+	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalf("Could not open input file: %v", err)
 	}
 	defer file.Close()
-    fileInfo, err := file.Stat()
-    if err != nil {
+	fileInfo, err := file.Stat()
+	if err != nil {
 		log.Fatalf("Could not stat file: %v", err)
-    }
+	}
 
-    data, err := syscall.Mmap(int(file.Fd()), 0, int(fileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
-    if err != nil {
+	data, err := syscall.Mmap(int(file.Fd()), 0, int(fileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
 		log.Fatalf("Could not mmap file", err)
-    }
-    defer syscall.Munmap(data)
+	}
+	defer syscall.Munmap(data)
 
-    reader := bytes.NewReader(data)
-    scanner := bufio.NewScanner(reader)
+	reader := bytes.NewReader(data)
+	scanner := bufio.NewScanner(reader)
 
-	agg := make(map[string]MeasurementAgg)
+	agg := make(map[string]*MeasurementAgg, 500)
 	for scanner.Scan() {
 		text := scanner.Text()
 		split := strings.Split(text, ";")
@@ -61,9 +79,8 @@ func main() {
 			stationAgg.Max = max(stationAgg.Max, value)
 			stationAgg.Sum = stationAgg.Sum + value
 			stationAgg.Count = stationAgg.Count + 1
-			agg[name] = stationAgg
 		} else {
-			agg[name] = MeasurementAgg{
+			agg[name] = &MeasurementAgg{
 				Min:   value,
 				Max:   value,
 				Sum:   value,
