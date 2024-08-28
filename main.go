@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 )
 
 type Measurement struct {
@@ -42,15 +41,6 @@ func main() {
 	defer pprof.StopCPUProfile()
 
 	processFile(os.Args[1])
-}
-
-func monitorChan[T any](name string, ch chan T) {
-	for {
-		if len(ch) == cap(ch) {
-			fmt.Println("Channel full:", name)
-		}
-		time.Sleep(1 * time.Second)
-	}
 }
 
 func readFile(filePath string, batches chan<- []string) {
@@ -122,9 +112,6 @@ func processFile(filePath string) {
 
 	measurementBatches := make(chan []Measurement, 50)
 	go parseLines(lineBatches, measurementBatches)
-
-	monitorChan("lineBatches", lineBatches)
-	monitorChan("measurementBatches", measurementBatches)
 
 	agg := make(map[string]*MeasurementAgg, 500)
 	for batch := range measurementBatches {
