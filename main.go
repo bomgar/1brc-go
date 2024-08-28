@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"log"
 	"maps"
@@ -10,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 type MeasurementAgg struct {
@@ -25,8 +27,20 @@ func main() {
 		log.Fatalf("Could not open input file: %v", err)
 	}
 	defer file.Close()
+    fileInfo, err := file.Stat()
+    if err != nil {
+		log.Fatalf("Could not stat file: %v", err)
+    }
 
-	scanner := bufio.NewScanner(file)
+    data, err := syscall.Mmap(int(file.Fd()), 0, int(fileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+    if err != nil {
+		log.Fatalf("Could not mmap file", err)
+    }
+    defer syscall.Munmap(data)
+
+    reader := bytes.NewReader(data)
+    scanner := bufio.NewScanner(reader)
+
 	agg := make(map[string]MeasurementAgg)
 	for scanner.Scan() {
 		text := scanner.Text()
