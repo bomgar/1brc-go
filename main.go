@@ -22,7 +22,7 @@ type MeasurementAgg struct {
 func main() {
 	file, err := os.Open(os.Args[1])
 	if err != nil {
-		log.Fatalf("Could not open input file: %w", err)
+		log.Fatalf("Could not open input file: %v", err)
 	}
 	defer file.Close()
 
@@ -38,7 +38,7 @@ func main() {
 		name := split[0]
 		value, err := strconv.ParseFloat(split[1], 64)
 		if err != nil {
-			log.Fatalf("Could not parse value: %w", err)
+			log.Fatalf("Could not parse value: %v", err)
 		}
 
 		stationAgg, ok := agg[name]
