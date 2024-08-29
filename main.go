@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"slices"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -109,7 +108,7 @@ func processChunk(data []byte, batches chan<- []Measurement) {
 	scanner := bufio.NewScanner(reader)
 	batch := make([]Measurement, 0, 1000)
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
         measurement:= parseLine(line)
 		batch = append(batch, measurement)
 		if len(batch) == 1000 {
@@ -122,15 +121,15 @@ func processChunk(data []byte, batches chan<- []Measurement) {
 	}
 }
 
-func splitLine(line string) (string, string) {
-	commaIndex := strings.Index(line, ";")
+func splitLine(line []byte) (string, string) {
+	commaIndex := bytes.IndexByte(line, ';')
 	if commaIndex == -1 {
 		log.Fatalf("Invalid line: %s", line)
 	}
-	return line[:commaIndex], line[commaIndex+1:]
+	return string(line[:commaIndex]), string(line[commaIndex+1:])
 }
 
-func parseLine(line string) Measurement {
+func parseLine(line []byte) Measurement {
 	name, valueString := splitLine(line)
 	value := fastfloat.ParseBestEffort(valueString)
 	return Measurement{
