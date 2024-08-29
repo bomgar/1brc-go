@@ -106,14 +106,15 @@ func readFile(filePath string, batches chan<- []Measurement) {
 func processChunk(data []byte, batches chan<- []Measurement) {
 	reader := bytes.NewReader(data)
 	scanner := bufio.NewScanner(reader)
-	batch := make([]Measurement, 0, 1000)
+    const batchSize = 10000
+	batch := make([]Measurement, 0, batchSize)
 	for scanner.Scan() {
 		line := scanner.Bytes()
         measurement:= parseLine(line)
 		batch = append(batch, measurement)
-		if len(batch) == 1000 {
+		if len(batch) == batchSize {
 			batches <- batch
-			batch = make([]Measurement, 0, 1000)
+			batch = make([]Measurement, 0, batchSize)
 		}
 	}
 	if len(batch) > 0 {
