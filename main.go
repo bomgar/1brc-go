@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/bomgar/1brc-go/fastfloat"
+	"github.com/valyala/fastjson/fastfloat"
 )
 
 type Measurement struct {
@@ -65,7 +65,7 @@ func readFile(data []byte, batches chan<- map[string]*MeasurementAgg) {
 		offset += chunkSize
 		if offset >= len(data) {
 			wg.Add(1)
-            go goChunk(data[start:])
+			go goChunk(data[start:])
 			break
 		}
 
