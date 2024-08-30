@@ -147,7 +147,7 @@ func processFile(filePath string) {
 
 	data, err := syscall.Mmap(int(file.Fd()), 0, int(fileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
-		log.Fatalf("Could not mmap file", err)
+		log.Fatalf("Could not mmap file: %v", err)
 	}
 
 	defer syscall.Munmap(data)
