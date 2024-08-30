@@ -46,7 +46,7 @@ func main() {
 	processFile(os.Args[1])
 }
 
-func readFile(data []byte, aggregations chan<- map[string]*MeasurementAgg) {
+func aggregateDataInChunks(data []byte, aggregations chan<- map[string]*MeasurementAgg) {
 
 	chunkSize := len(data) / runtime.NumCPU()
 	if chunkSize == 0 {
@@ -146,10 +146,14 @@ func processFile(filePath string) {
 	if err != nil {
 		log.Fatalf("Could not mmap file: %v", err)
 	}
-
 	defer syscall.Munmap(data)
+
+	processData(data)
+}
+
+func processData(data []byte) {
 	aggregations := make(chan map[string]*MeasurementAgg)
-	go readFile(data, aggregations)
+	go aggregateDataInChunks(data, aggregations)
 
 	totalAggreation := make(map[string]*MeasurementAgg, 500)
 	for subAgg := range aggregations {
