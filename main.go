@@ -151,7 +151,7 @@ func processFile(filePath string) {
 	}
 
 	defer syscall.Munmap(data)
-	measurementBatches := make(chan map[string]*MeasurementAgg, 50)
+	measurementBatches := make(chan map[string]*MeasurementAgg)
 	go readFile(data, measurementBatches)
 
 	agg := make(map[string]*MeasurementAgg, 500)
