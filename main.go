@@ -46,7 +46,7 @@ func main() {
 	processFile(os.Args[1])
 }
 
-func readFile(data []byte, batches chan<- map[string]*MeasurementAgg) {
+func readFile(data []byte, aggregations chan<- map[string]*MeasurementAgg) {
 
 	chunkSize := len(data) / runtime.NumCPU()
 	if chunkSize == 0 {
@@ -55,7 +55,7 @@ func readFile(data []byte, batches chan<- map[string]*MeasurementAgg) {
 	var wg sync.WaitGroup
 
 	goChunk := func(data []byte) {
-		processChunk(data, batches)
+		processChunk(data, aggregations)
 		wg.Done()
 	}
 
@@ -83,10 +83,10 @@ func readFile(data []byte, batches chan<- map[string]*MeasurementAgg) {
 	}
 
 	wg.Wait()
-	close(batches)
+	close(aggregations)
 }
 
-func processChunk(data []byte, batches chan<- map[string]*MeasurementAgg) {
+func processChunk(data []byte, aggregations chan<- map[string]*MeasurementAgg) {
 	reader := bytes.NewReader(data)
 	scanner := bufio.NewScanner(reader)
 	agg := make(map[string]*MeasurementAgg, 500)
@@ -111,7 +111,7 @@ func processChunk(data []byte, batches chan<- map[string]*MeasurementAgg) {
 			}
 		}
 	}
-	batches <- agg
+	aggregations <- agg
 }
 
 func splitLine(line []byte) ([]byte, []byte) {
@@ -148,20 +148,20 @@ func processFile(filePath string) {
 	}
 
 	defer syscall.Munmap(data)
-	measurementBatches := make(chan map[string]*MeasurementAgg)
-	go readFile(data, measurementBatches)
+	aggregations := make(chan map[string]*MeasurementAgg)
+	go readFile(data, aggregations)
 
-	agg := make(map[string]*MeasurementAgg, 500)
-	for subAgg := range measurementBatches {
+	totalAggreation := make(map[string]*MeasurementAgg, 500)
+	for subAgg := range aggregations {
 		for station, value := range subAgg {
-			stationAgg, ok := agg[station]
+			stationAgg, ok := totalAggreation[station]
 			if ok {
 				stationAgg.Min = min(stationAgg.Min, value.Min)
 				stationAgg.Max = max(stationAgg.Max, value.Max)
 				stationAgg.Sum = stationAgg.Sum + value.Sum
 				stationAgg.Count = stationAgg.Count + value.Count
 			} else {
-				agg[station] = &MeasurementAgg{
+				totalAggreation[station] = &MeasurementAgg{
 					Min:   value.Min,
 					Max:   value.Max,
 					Sum:   value.Sum,
@@ -172,8 +172,8 @@ func processFile(filePath string) {
 
 	}
 
-	for _, station := range slices.Sorted(maps.Keys(agg)) {
-		stationAgg := agg[station]
+	for _, station := range slices.Sorted(maps.Keys(totalAggreation)) {
+		stationAgg := totalAggreation[station]
 		fmt.Println(station, stationAgg.Min, math.Round((stationAgg.Sum/float64(stationAgg.Count))*10.0)/10.0, stationAgg.Max)
 	}
 }
