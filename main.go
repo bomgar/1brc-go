@@ -13,12 +13,13 @@ import (
 	"slices"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/bomgar/1brc-go/fastfloat"
 )
 
 type Measurement struct {
-	Station string
+	Station []byte
 	Value   float64
 }
 type MeasurementAgg struct {
@@ -45,22 +46,7 @@ func main() {
 	processFile(os.Args[1])
 }
 
-func readFile(filePath string, batches chan<- []Measurement) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Fatalf("Could not open input file: %v", err)
-	}
-	defer file.Close()
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Fatalf("Could not stat file: %v", err)
-	}
-
-	data, err := syscall.Mmap(int(file.Fd()), 0, int(fileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
-	if err != nil {
-		log.Fatalf("Could not mmap file", err)
-	}
-	defer syscall.Munmap(data)
+func readFile(data []byte, batches chan<- map[string]*MeasurementAgg) {
 
 	nChunks := runtime.NumCPU()
 
@@ -103,36 +89,46 @@ func readFile(filePath string, batches chan<- []Measurement) {
 	close(batches)
 }
 
-func processChunk(data []byte, batches chan<- []Measurement) {
+func processChunk(data []byte, batches chan<- map[string]*MeasurementAgg) {
 	reader := bytes.NewReader(data)
 	scanner := bufio.NewScanner(reader)
-    const batchSize = 10000
-	batch := make([]Measurement, 0, batchSize)
+	const batchSize = 10000
+	agg := make(map[string]*MeasurementAgg, 500)
 	for scanner.Scan() {
 		line := scanner.Bytes()
-        measurement:= parseLine(line)
-		batch = append(batch, measurement)
-		if len(batch) == batchSize {
-			batches <- batch
-			batch = make([]Measurement, 0, batchSize)
+		measurement := parseLine(line)
+		value := measurement.Value
+		unsafeStation := unsafe.String(&measurement.Station[0], len(measurement.Station))
+		stationAgg, ok := agg[unsafeStation]
+		if ok {
+			stationAgg.Min = min(stationAgg.Min, value)
+			stationAgg.Max = max(stationAgg.Max, value)
+			stationAgg.Sum = stationAgg.Sum + value
+			stationAgg.Count = stationAgg.Count + 1
+		} else {
+			station := string(measurement.Station)
+			agg[station] = &MeasurementAgg{
+				Min:   value,
+				Max:   value,
+				Sum:   value,
+				Count: 1,
+			}
 		}
 	}
-	if len(batch) > 0 {
-		batches <- batch
-	}
+	batches <- agg
 }
 
-func splitLine(line []byte) (string, string) {
+func splitLine(line []byte) ([]byte, []byte) {
 	commaIndex := bytes.IndexByte(line, ';')
 	if commaIndex == -1 {
 		log.Fatalf("Invalid line: %s", line)
 	}
-	return string(line[:commaIndex]), string(line[commaIndex+1:])
+	return line[:commaIndex], line[commaIndex+1:]
 }
 
 func parseLine(line []byte) Measurement {
-	name, valueString := splitLine(line)
-	value := fastfloat.ParseBestEffort(valueString)
+	name, valueRaw := splitLine(line)
+	value := fastfloat.ParseBestEffort(unsafe.String(&valueRaw[0], len(valueRaw)))
 	return Measurement{
 		Station: name,
 		Value:   value,
@@ -140,27 +136,40 @@ func parseLine(line []byte) Measurement {
 }
 
 func processFile(filePath string) {
-	measurementBatches := make(chan []Measurement, 50)
-	go readFile(filePath, measurementBatches)
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Fatalf("Could not open input file: %v", err)
+	}
+	defer file.Close()
+	fileInfo, err := file.Stat()
+	if err != nil {
+		log.Fatalf("Could not stat file: %v", err)
+	}
+
+	data, err := syscall.Mmap(int(file.Fd()), 0, int(fileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		log.Fatalf("Could not mmap file", err)
+	}
+
+	defer syscall.Munmap(data)
+	measurementBatches := make(chan map[string]*MeasurementAgg, 50)
+	go readFile(data, measurementBatches)
 
 	agg := make(map[string]*MeasurementAgg, 500)
-	for batch := range measurementBatches {
-		for _, measurement := range batch {
-			station := measurement.Station
-			value := measurement.Value
-
+	for subAgg := range measurementBatches {
+		for station, value := range subAgg {
 			stationAgg, ok := agg[station]
 			if ok {
-				stationAgg.Min = min(stationAgg.Min, value)
-				stationAgg.Max = max(stationAgg.Max, value)
-				stationAgg.Sum = stationAgg.Sum + value
-				stationAgg.Count = stationAgg.Count + 1
+				stationAgg.Min = min(stationAgg.Min, value.Min)
+				stationAgg.Max = max(stationAgg.Max, value.Max)
+				stationAgg.Sum = stationAgg.Sum + value.Sum
+				stationAgg.Count = stationAgg.Count + value.Count
 			} else {
 				agg[station] = &MeasurementAgg{
-					Min:   value,
-					Max:   value,
-					Sum:   value,
-					Count: 1,
+					Min:   value.Min,
+					Max:   value.Max,
+					Sum:   value.Sum,
+					Count: value.Count,
 				}
 			}
 		}
