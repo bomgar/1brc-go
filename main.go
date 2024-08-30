@@ -48,43 +48,40 @@ func main() {
 
 func readFile(data []byte, batches chan<- map[string]*MeasurementAgg) {
 
-	nChunks := runtime.NumCPU()
-
-	chunkSize := len(data) / nChunks
+	chunkSize := len(data) / runtime.NumCPU()
 	if chunkSize == 0 {
 		chunkSize = len(data)
 	}
+	var wg sync.WaitGroup
 
-	chunks := make([]int, 0, nChunks)
+	goChunk := func(data []byte) {
+		processChunk(data, batches)
+		wg.Done()
+	}
+
+	start := 0
 	offset := 0
 	for offset < len(data) {
 		offset += chunkSize
 		if offset >= len(data) {
-			chunks = append(chunks, len(data))
+			wg.Add(1)
+            go goChunk(data[start:])
 			break
 		}
 
-		nlPos := bytes.IndexByte(data[offset:], '\n')
-		if nlPos == -1 {
-			chunks = append(chunks, len(data))
+		newlineIndex := bytes.IndexByte(data[offset:], '\n')
+		if newlineIndex == -1 {
+			wg.Add(1)
+			go goChunk(data[start:])
 			break
 		} else {
-			offset += nlPos + 1
-			chunks = append(chunks, offset)
+			offset += newlineIndex + 1
+			wg.Add(1)
+			go goChunk(data[start:offset])
+			start = offset
 		}
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(chunks))
-
-	start := 0
-	for _, chunk := range chunks {
-		go func(data []byte) {
-			processChunk(data, batches)
-			wg.Done()
-		}(data[start:chunk])
-		start = chunk
-	}
 	wg.Wait()
 	close(batches)
 }
