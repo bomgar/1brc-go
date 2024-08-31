@@ -34,16 +34,16 @@ func TestProcess1000(t *testing.T) {
 
 	for i, resultString := range resultSplit {
 		expectedString := expectedSplit[i]
-        if resultString == "" && expectedString == "" {
-            continue
-        }
+		if resultString == "" && expectedString == "" {
+			continue
+		}
 
 		result := parseLine(t, resultString)
 		expected := parseLine(t, expectedString)
 
 		assert.Equal(t, expected.Station, result.Station)
 		assert.InDelta(t, expected.Min, result.Min, 0.01, "Min mismatch")
-        assert.InDelta(t, expected.Avg, result.Avg, 0.2, fmt.Sprintf("Avg mismatch: %s - %s", resultString, expectedString))
+		assert.InDelta(t, expected.Avg, result.Avg, 0.2, fmt.Sprintf("Avg mismatch: %s - %s", resultString, expectedString))
 		assert.InDelta(t, expected.Max, result.Max, 0.01, "Max mismatch")
 	}
 
