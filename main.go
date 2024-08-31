@@ -43,5 +43,5 @@ func processFile(filePath string) {
 	}
 	defer syscall.Munmap(data)
 
-	process.ProcessData(data)
+	process.ProcessData(data, os.Stdout)
 }

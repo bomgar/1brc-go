@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"maps"
 	"math"
@@ -112,7 +113,7 @@ func parseLine(line []byte) Measurement {
 	}
 }
 
-func ProcessData(data []byte) {
+func ProcessData(data []byte, writer io.Writer) {
 	aggregations := make(chan map[string]*MeasurementAgg)
 	go aggregateDataInChunks(data, aggregations)
 
@@ -139,6 +140,6 @@ func ProcessData(data []byte) {
 
 	for _, station := range slices.Sorted(maps.Keys(totalAggreation)) {
 		stationAgg := totalAggreation[station]
-		fmt.Println(station, stationAgg.Min, math.Round((stationAgg.Sum/float64(stationAgg.Count))*10.0)/10.0, stationAgg.Max)
+		fmt.Fprintln(writer, station, stationAgg.Min, math.Round((stationAgg.Sum/float64(stationAgg.Count))*10.0)/10.0, stationAgg.Max)
 	}
 }
