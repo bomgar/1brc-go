@@ -1,12 +1,13 @@
 package process
 
 import (
-	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestFileProcess(t *testing.T) {
+func TestProcess(t *testing.T) {
 
 	// Existing test (kept for reference)
 	t.Run("Basic Test", func(t *testing.T) {

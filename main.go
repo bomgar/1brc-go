@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"os"
 	"runtime/pprof"
@@ -23,10 +24,10 @@ func main() {
 	}
 	defer pprof.StopCPUProfile()
 
-	processFile(os.Args[1])
+	processFile(os.Args[1], os.Stdout)
 }
 
-func processFile(filePath string) {
+func processFile(filePath string, writer io.Writer) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalf("Could not open input file: %v", err)
@@ -43,5 +44,5 @@ func processFile(filePath string) {
 	}
 	defer syscall.Munmap(data)
 
-	process.ProcessData(data, os.Stdout)
+	process.ProcessData(data, writer)
 }
