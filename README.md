@@ -1,6 +1,6 @@
 My attempt at https://github.com/gunnarmorling/1brc
 
-1000000000 rows run in 3 seconds on my machine. It does not mean anything compared to the offical challenge times because it is different hardware.
+1000000000 rows run in 3 seconds on my machine. Comparing this with the official leadberboard is meaningless (The hardware is different).
 
 ```bash
 # There is a 1000 row test file:
